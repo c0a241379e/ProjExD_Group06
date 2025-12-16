@@ -3,6 +3,8 @@ import random
 import os
 from typing import List, Tuple
 
+from enemy import Enemy
+
 class MapGenerator:
     def __init__(self, width=100, height=100, tile_size=16):
         self.width = width
@@ -130,6 +132,16 @@ def main():
     # マップジェネレーターの初期化
     map_gen = MapGenerator(width=100, height=100, tile_size=16)
     map_gen.generate()
+    # 敵の生成: 各部屋に1体ずつランダムに配置する
+    enemies: List[Enemy] = []
+    for room in map_gen.rooms:
+        # 部屋内のタイル座標をランダムに選び、ピクセル座標に変換
+        tx = random.randint(max(room.left + 1, 0), max(room.right - 2, room.left))
+        ty = random.randint(max(room.top + 1, 0), max(room.bottom - 2, room.top))
+        ex = tx * map_gen.tile_size
+        ey = ty * map_gen.tile_size
+        # 敵画像は未指定（フォールバック描画）。速度は適度に設定
+        enemies.append(Enemy(ex, ey, hp=20, speed=40.0, image_path="Assets/enemy_kyuri.png", tile_size=map_gen.tile_size))
     
     # カメラ位置
     camera_x = 0
@@ -166,6 +178,9 @@ def main():
         # 描画
         screen.fill((0, 0, 0))
         map_gen.draw(screen, camera_x, camera_y)
+        # 敵描画
+        for e in enemies:
+            e.draw(screen, camera_x, camera_y)
         
         # UI表示
         font = pygame.font.Font(None, 36)
