@@ -1,12 +1,12 @@
 import pygame
 import os
-import random
 import sys
 
+# パッケージ内のクラスをインポート
 from map_engine.map_generator import MapGenerator
 from Trap import Trap
 from Trapmanager import TrapManager
-from Stairs import Stairs
+from Title import TitleScreen
 
 DEFAULT_TILE_SIZE = 48 
 
@@ -16,8 +16,12 @@ def main():
     
     pygame.init()
     screen = pygame.display.set_mode((1000, 700)) 
-    pygame.display.set_caption("Dungeon Crawler with Stairs")
+    pygame.display.set_caption(".pngへの道")
     clock = pygame.time.Clock()
+    
+    # タイトル画面を表示
+    title_screen = TitleScreen(screen_width=1000, screen_height=700)
+    title_screen.run(screen)
     
     try:
         map_gen = MapGenerator(width=50, height=50, tile_size=DEFAULT_TILE_SIZE) 
@@ -26,10 +30,8 @@ def main():
         pygame.quit()
         sys.exit()
 
-    # タイル設定
     FLOOR_TILESET_IDX = 0 
     FLOOR_TILE_IDX = 0    
-    
     WALL_TILESET_IDX = 1  
     WALL_TILE_IDX = 1     
     
@@ -45,22 +47,19 @@ def main():
     # 初期マップ生成
     map_gen.generate()
     
-    # トラップマネージャーの初期化
     trap_manager = TrapManager(tile_size=DEFAULT_TILE_SIZE)
     trap_manager.generate_traps(map_gen, trap_count=30)
 
-    # 階段の生成（map_generatorに階段位置がない場合は最後の部屋の中央に配置）
+    camera_x = 0
+    camera_y = 0
+
+    from Stairs import Stairs  # Stairsクラスのインポート
     if hasattr(map_gen, 'stairs_pos') and map_gen.stairs_pos:
         stairs = Stairs(map_gen.stairs_pos[0], map_gen.stairs_pos[1], DEFAULT_TILE_SIZE)
     else:
-        # 階段位置がない場合は最後の部屋に配置
         last_room = map_gen.rooms[-1]
         stairs = Stairs(last_room.centerx, last_room.centery, DEFAULT_TILE_SIZE)
     
-    # 現在の階層
-    current_floor = 1
-
-    # プレイヤー生成
     from move import Player
     player = Player(
         map_gen.rooms[0].centerx,
@@ -68,15 +67,13 @@ def main():
         tile_size=48
     )
     
-    camera_x = 0
-    camera_y = 0
-    
-    # デバッグモード（罠の可視化）
+    camera_speed = 10 
     show_traps = False
-
+    current_floor = 1
+    
     running = True
     while running:
-        dt = clock.tick(60) / 1000.0  # 秒単位のデルタタイム
+        dt = clock.tick(60) / 16.0
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -100,50 +97,42 @@ def main():
                     player.tile_x = map_gen.rooms[0].centerx
                     player.tile_y = map_gen.rooms[0].centery
                 elif event.key == pygame.K_t:
-                    # Tキーで罠の可視化切り替え
                     show_traps = not show_traps
-                    
         
-        # プレイヤー移動（WASDキー）
         keys = pygame.key.get_pressed()
         player.handle_input(keys, map_gen)
         
-        # 階段との衝突判定
-        player_rect = pygame.Rect(
-            player.tile_x * player.tile_size,
-            player.tile_y * player.tile_size,
-            player.tile_size,
-            player.tile_size
-        )
-        
-        if stairs.check_collision(player_rect):
-            # 次の階層へ移動
-            current_floor += 1
-            map_gen.generate()
-            trap_manager.generate_traps(map_gen, trap_count=30)
-            
-            # 階段を再生成
-            if hasattr(map_gen, 'stairs_pos') and map_gen.stairs_pos:
-                stairs = Stairs(map_gen.stairs_pos[0], map_gen.stairs_pos[1], DEFAULT_TILE_SIZE)
-            else:
-                last_room = map_gen.rooms[-1]
-                stairs = Stairs(last_room.centerx, last_room.centery, DEFAULT_TILE_SIZE)
-            
-            # プレイヤーを新しいマップの最初の部屋に配置
-            player.tile_x = map_gen.rooms[0].centerx
-            player.tile_y = map_gen.rooms[0].centery
-        
-        # カメラをプレイヤーに追従
         camera_x, camera_y = player.get_camera_pos(
             800, 600,
             map_gen.width * map_gen.tile_size,
             map_gen.height * map_gen.tile_size
         )
 
-        # トラップの更新
+        # トラップとの衝突判定
+        damage = trap_manager.check_collisions(player.get_rect())
+        if damage > 0:
+            print(f"トラップ発動! ダメージ: {damage}")
+
         trap_manager.update(dt)
+        if player.tile_x == stairs.tile_x and player.tile_y == stairs.tile_y:
+            print(f"階段に到達! 次の階層へ（Floor {current_floor + 1}）")
+            current_floor += 1
+            
+            # 新しいマップを生成
+            map_gen.generate()
+            trap_manager.generate_traps(map_gen, trap_count=30)
+            
+            # 新しい階段を配置
+            if hasattr(map_gen, 'stairs_pos') and map_gen.stairs_pos:
+                stairs = Stairs(map_gen.stairs_pos[0], map_gen.stairs_pos[1], DEFAULT_TILE_SIZE)
+            else:
+                last_room = map_gen.rooms[-1]
+                stairs = Stairs(last_room.centerx, last_room.centery, DEFAULT_TILE_SIZE)
+            
+            # プレイヤーを最初の部屋に配置
+            player.tile_x = map_gen.rooms[0].centerx
+            player.tile_y = map_gen.rooms[0].centery
         
-        # 描画
         screen.fill((0, 0, 0))
         map_gen.draw(screen, camera_x, camera_y)
         trap_manager.draw(screen, camera_x, camera_y, show_traps)
@@ -151,14 +140,9 @@ def main():
         
         player.draw(screen, camera_x, camera_y)
         
-        # UI表示
-        font = pygame.font.Font(None, 36)
-        floor_text = font.render(f"Floor: {current_floor}", True, (255, 255, 255))
-        screen.blit(floor_text, (10, 10))
-        
-        # その他の情報
-        small_font = pygame.font.Font(None, 24)
-        text1 = small_font.render("SPACE: Regenerate | WASD: Move", True, (255, 255, 255))
+        font = pygame.font.Font(None, 24)
+        small_font = pygame.font.Font(None, 20)
+        text1 = font.render("SPACE: Regenerate | T: Toggle Traps", True, (255, 255, 255))
         
         tile_info = (f"Floor: TS{map_gen.floor_tileset}[{map_gen.floor_tile}] | "
                 f"Wall: TS{map_gen.wall_tileset}[{map_gen.wall_tile}]")
@@ -167,9 +151,12 @@ def main():
         trap_status = "Visible" if show_traps else "Invisible"
         trap_text = small_font.render(f"Traps: {len(trap_manager.traps)} ({trap_status})", True, (255, 255, 100))
 
+        floor_text = font.render(f"Floor: {current_floor}", True, (255, 255, 255))
+
         screen.blit(text1, (10, 50))
         screen.blit(text2, (10, 75))
         screen.blit(trap_text, (10, 100))
+        screen.blit(floor_text, (10, 10))  
         
         pygame.display.flip()
         clock.tick(60)
