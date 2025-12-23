@@ -1,6 +1,7 @@
 import os
 import random
 from typing import Optional, Tuple
+from collections import deque
 
 import pygame
 
@@ -73,4 +74,50 @@ class Enemy:
 	@property
 	def rect(self) -> pygame.Rect:
 		return self._rect
+
+	def move_towards_player(self, player_tile_x: int, player_tile_y: int, map_gen) -> None:
+		"""
+		プレイヤーへの直線距離（ユークリッド距離）を最小化する隣接タイルへ1マスだけ移動する。
+
+		四方向（上下左右）のうち、通行可能（map_gen.tilemap == 1）で
+		プレイヤーへの距離が現在より小さくなるタイルを選ぶ。
+		"""
+		# 敵の現在タイル座標（ピクセル座標 -> タイル座標）
+		start_tx = int(self.x) // self.tile_size
+		start_ty = int(self.y) // self.tile_size
+
+		ptx = int(player_tile_x)
+		pty = int(player_tile_y)
+
+		# 既に同じタイルなら何もしない
+		if (start_tx, start_ty) == (ptx, pty):
+			return
+
+		width = map_gen.width
+		height = map_gen.height
+
+		# 現在の二乗距離（sqrtは不要）
+		curr_ds = (start_tx - ptx) * (start_tx - ptx) + (start_ty - pty) * (start_ty - pty)
+
+		# 四方向を評価して、距離が最小になる通行可能タイルを選ぶ
+		dirs = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+		best = None
+		best_ds = curr_ds
+
+		for dx, dy in dirs:
+			nx = start_tx + dx
+			ny = start_ty + dy
+			if 0 <= nx < width and 0 <= ny < height:
+				# 通行可能か
+				if map_gen.tilemap[nx][ny] == 1:
+					ds = (nx - ptx) * (nx - ptx) + (ny - pty) * (ny - pty)
+					if ds < best_ds:
+						best_ds = ds
+						best = (nx, ny)
+
+		if best:
+			nx, ny = best
+			self.x = nx * self.tile_size
+			self.y = ny * self.tile_size
+			self._rect.topleft = (int(self.x), int(self.y))
 

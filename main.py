@@ -39,8 +39,8 @@ def main():
     # TS0 = tileset1.png, TS1 = tileset2.png (あれば)
     # インデックス計算: tile_idx = y * (横のタイル数) + x 
     
-    FLOOR_TILESET_IDX = 0 
-    FLOOR_TILE_IDX = 0    
+    FLOOR_TILESET_IDX = 0
+    FLOOR_TILE_IDX = 0
     
     WALL_TILESET_IDX = 1  
     WALL_TILE_IDX = 1     
@@ -102,7 +102,16 @@ def main():
         #     camera_y += camera_speed
         # プレイヤー移動（WASDキー）
         keys = pygame.key.get_pressed()
+        prev_px, prev_py = player.tile_x, player.tile_y
         player.handle_input(keys, map_gen)
+
+        # プレイヤーが1タイル移動したら敵を1マス進める
+        if (player.tile_x, player.tile_y) != (prev_px, prev_py):
+            for e in enemies:
+                try:
+                    e.move_towards_player(player.tile_x, player.tile_y, map_gen)
+                except Exception:
+                    pass
         
         # カメラをプレイヤーに追従
         camera_x, camera_y = player.get_camera_pos(
