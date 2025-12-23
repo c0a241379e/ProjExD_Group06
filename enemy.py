@@ -37,6 +37,13 @@ class Enemy:
 
 		self._image = None
 		self._rect = pygame.Rect(int(x), int(y), tile_size, tile_size)
+		
+		# 描画用の座標（滑らかな移動のため）
+		self._vis_x = float(x)
+		self._vis_y = float(y)
+		
+		# 移動アニメーション用のキュー（グリッド移動を表現するため）
+		self._move_queue = deque()
 
 		# 画像の読み込み（省略可）
 		if image_path:
@@ -72,17 +79,72 @@ class Enemy:
 						ex,
 						ey,
 						hp=20,
-						speed=40.0,
+						speed=100.0, # 高速化（1マス約0.16秒）
 						image_path="Assets/enemy_kyuri.png",
 						tile_size=map_gen.tile_size,
 					)
 				)
 		return enemies
 
+	def update(self, dt: float) -> None:
+		"""描画座標をキューに基づいて移動させる（グリッド移動アニメーション）。"""
+		# キューが空で、かつ現在位置が論理座標とずれている場合は論理座標をターゲットにする
+		# (初期配置やリセット時のため)
+		if not self._move_queue:
+			target_x = float(self.x)
+			target_y = float(self.y)
+		else:
+			# キューの先頭を現在の目標とする（取り出さずに参照）
+			target_x, target_y = self._move_queue[0]
+
+		# 現在地点（描画座標）との差分
+		dx = target_x - self._vis_x
+		dy = target_y - self._vis_y
+		
+		dist_sq = dx * dx + dy * dy
+		
+		# 遅延対策: キューが溜まりすぎている（3つ以上）場合は高速消化（ワープ気味に）
+		current_speed = self.speed
+		if len(self._move_queue) > 2:
+			current_speed *= 2.0
+		
+		# 距離がごくわずかなら到着とみなす
+		if dist_sq < 4.0: # 許容誤差を少し広げる
+			self._vis_x = target_x
+			self._vis_y = target_y
+			
+			# キューの先頭に到達したので削除
+			if self._move_queue:
+				self._move_queue.popleft()
+			return
+
+		# 距離が離れすぎている場合（同期ズレ防止）は強制ワープ
+		# キューがある場合はワープせず頑張って追いつくが、あまりに遠いなら諦める
+		if not self._move_queue and dist_sq > (self.tile_size * 2) ** 2:
+			self._vis_x = target_x
+			self._vis_y = target_y
+			return
+
+		dist = dist_sq ** 0.5
+		
+		# 今回のフレームで移動できる距離
+		move_dist = current_speed * dt
+		
+		if dist <= move_dist:
+			# 到着
+			self._vis_x = target_x
+			self._vis_y = target_y
+			if self._move_queue:
+				self._move_queue.popleft()
+		else:
+			# 目標に向かって移動
+			self._vis_x += (dx / dist) * move_dist
+			self._vis_y += (dy / dist) * move_dist
+
 	def draw(self, surface: pygame.Surface, camera_x: int = 0, camera_y: int = 0) -> None:
 		"""敵を描画する。カメラオフセットに対応。"""
-		screen_x = int(self.x) - camera_x
-		screen_y = int(self.y) - camera_y
+		screen_x = int(self._vis_x) - camera_x
+		screen_y = int(self._vis_y) - camera_y
 
 		if self._image:
 			surface.blit(self._image, (screen_x, screen_y))
@@ -154,6 +216,9 @@ class Enemy:
 			self.x = nx * self.tile_size
 			self.y = ny * self.tile_size
 			self._rect.topleft = (int(self.x), int(self.y))
+			
+			# アニメーションキューに追加
+			self._move_queue.append((float(self.x), float(self.y)))
 			return True
 
 		# 有効な候補が見つからなかった

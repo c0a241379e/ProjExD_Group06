@@ -84,6 +84,7 @@ def main():
     running = True
     while running:
         dt = clock.tick(60) / 16.0
+        if dt > 0.1: dt = 0.1 # DTキャップ（不安定な挙動防止）
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -202,6 +203,7 @@ def main():
         map_gen.draw(screen, camera_x, camera_y)
 
         for e in enemies:
+            e.update(dt)
             e.draw(screen, camera_x, camera_y)
 
         trap_manager.draw(screen, camera_x, camera_y, show_traps)
